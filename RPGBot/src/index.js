@@ -1,5 +1,9 @@
 require('dotenv').config();
-const { Client, IntentsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, IntentsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle, Message, } = require('discord.js');
+const mongoose = require('mongoose');
+const {Schema, model } = require('mongoose');
+const Level = require('./Level');
+const calculateXp = require('./calculateXp');
 
 
 const client = new Client({
@@ -10,6 +14,7 @@ const client = new Client({
     IntentsBitField.Flags.MessageContent,
   ],
 });
+
 
 // -------------------------------- ROLE MESSAGE SETUP --------------------------------------- //
 function setupRoleMessage(channel) {
@@ -59,28 +64,16 @@ try {
 // -------------------------------- END ROLE MESSAGE SETUP --------------------------------------- //
 
 
-// CLIENT READY, on startup //
 
-
-client.on('ready', async () => {
-    console.log(`${client.user.tag} is online`);
-
-    const channel = await client.channels.cache.get('1139015166437113916') // channel for role select
-  if (channel) {
-    setupRoleMessage(channel); // role select button make function
-  }
-});
-
-// END CLIENT READY//
 
 
 // ------------------------------- CLIENT INTERACTION ------------------------------- //
 client.on('interactionCreate', async (interaction) => {
   if (interaction.isChatInputCommand())
   {
-    if (interaction.commandName == 'hey')
+    if (interaction.commandName === 'hey')
     {
-      interaction.reply('Hey this TEST worked');
+      interaction.reply('This Functions');
 
     }
 
@@ -113,6 +106,28 @@ client.on('interactionCreate', async (interaction) => {
   
 
     }
+
+    //await xpGiver(interaction.message)
+});
+
+
+// CLIENT READY, on startup //
+
+
+client.on('ready', async () => {
+  console.log(`${client.user.tag} is online`);
+
+  const channel = await client.channels.cache.get('1139015166437113916') // channel for role select
+if (channel) {
+  setupRoleMessage(channel); // role select button make function
+}
+});
+
+// END CLIENT READY//
+
+client.on("messageCreate", (message) => {
+  // CREATES THE LEVEL SCHEMA PER THE USER (if exists adds XP)
+   xpGiver(message);
 });
 
 // ------------------------------- END CLIENT INTERACTION ------------------------------- //
@@ -120,4 +135,86 @@ client.on('interactionCreate', async (interaction) => {
 
 
 
-client.login(process.env.TOKEN); // LOGIN FOR RPG BOT
+
+ function getRandomXp(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min + 1) + min);
+
+
+
+}
+
+
+async function xpGiver(message) {
+  console.log('xpGiver function called');
+  if (!message.guild || message.author.bot) { // If the message in the guild doesnt exist or if its the bot 
+    console.log('Exiting xpGiver: not applicable message');
+    return;
+  }
+  
+  //console.log('Processing xpGiver: applicable message');
+
+  const xpToGive = getRandomXp(5, 15); // 5 or 15
+  const query = {
+    userId: message.author.id,
+    guildId: message.guild.id,
+  };
+
+  try {
+    const level = await Level.findOne(query);
+
+    if (level) 
+    {
+      level.xp += xpToGive;
+
+      if (level.xp > calculateXp(level.level)) 
+      {
+        level.xp = 0;
+        level.level += 1;
+
+        message.channel.send(`${message.member} you have leveled up to level: ${level.level}`);
+      }
+
+      await level.save();
+    } 
+    else 
+    {
+      const newLevel = new Level({
+        userId: message.author.id,
+        guildId: message.guild.id,
+        xp: xpToGive,
+      });
+
+      await newLevel.save();
+    }
+  } catch (e) {
+    console.log(e);
+  }
+}
+
+
+
+// ------------------------------- MONGO DB CONNECTION ------------------------------- //
+
+(async () => {
+  try 
+  {
+    mongoose.set('strictQuery', false);
+    await mongoose.connect(process.env.MONGODB_URI, {keepAlive: true});
+    console.log("connected to db")
+
+
+    client.login(process.env.TOKEN);
+  } catch (e) 
+  {
+    console.log(e);
+  }
+  
+})();
+
+// ------------------------------- END MONGO DB CONNECTION ------------------------------- //
+
+
+
+ // LOGIN FOR RPG BOT
