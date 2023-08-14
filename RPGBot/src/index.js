@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const {Schema, model } = require('mongoose');
 const Level = require('./Level');
 const calculateXp = require('./calculateXp');
+const cooldowns = new Set();
 
 
 const client = new Client({
@@ -106,8 +107,8 @@ client.on('interactionCreate', async (interaction) => {
   
 
     }
+    
 
-    //await xpGiver(interaction.message)
 });
 
 
@@ -148,12 +149,10 @@ client.on("messageCreate", (message) => {
 
 async function xpGiver(message) {
   console.log('xpGiver function called');
-  if (!message.guild || message.author.bot) { // If the message in the guild doesnt exist or if its the bot 
-    console.log('Exiting xpGiver: not applicable message');
+  if (!message.inGuild() || message.author.bot) {
+    console.log('INCORRECT')
     return;
-  }
-  
-  //console.log('Processing xpGiver: applicable message');
+  } else {
 
   const xpToGive = getRandomXp(5, 15); // 5 or 15
   const query = {
@@ -191,6 +190,11 @@ async function xpGiver(message) {
   } catch (e) {
     console.log(e);
   }
+
+  }
+
+
+  
 }
 
 
@@ -204,14 +208,16 @@ async function xpGiver(message) {
     await mongoose.connect(process.env.MONGODB_URI, {keepAlive: true});
     console.log("connected to db")
 
-
     client.login(process.env.TOKEN);
+
+
   } catch (e) 
   {
     console.log(e);
   }
   
 })();
+
 
 // ------------------------------- END MONGO DB CONNECTION ------------------------------- //
 
