@@ -1,16 +1,23 @@
 require('dotenv').config();
-const { REST, Routes } = require('discord.js');
+const { REST, Routes, ApplicationCommandOptionType } = require('discord.js');
 
 const commands = [
     {
         name: 'hey',
         description: 'Replies with hey'
     },
-    /* {
+    {
         name: 'level',
-        description: 'creates a level if it can'
+        description: 'shows your level and stats',
+        options: [
+            {
+                name: 'target-user',
+                description: 'the user card you want to see',
+                type: ApplicationCommandOptionType.Mentionable,
+            }
+        ]
     },
-    */
+    
 ];
 
 const rest = new REST({ version: '10'}).setToken(process.env.TOKEN);

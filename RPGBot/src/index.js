@@ -1,10 +1,11 @@
 require('dotenv').config();
-const { Client, IntentsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle, Message, } = require('discord.js');
+const { Client, IntentsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle, Message, AttachmentBuilder } = require('discord.js');
 const mongoose = require('mongoose');
 const {Schema, model } = require('mongoose');
 const Level = require('./Level');
 const calculateXp = require('./calculateXp');
 const cooldowns = new Set();
+const canvacord  = require('canvacord')
 
 
 const client = new Client({
@@ -12,6 +13,7 @@ const client = new Client({
     IntentsBitField.Flags.Guilds,
     IntentsBitField.Flags.GuildMembers,
     IntentsBitField.Flags.GuildMessages,
+    IntentsBitField.Flags.GuildPresences,
     IntentsBitField.Flags.MessageContent,
   ],
 });
@@ -77,6 +79,12 @@ client.on('interactionCreate', async (interaction) => {
       interaction.reply('This Functions');
 
     }
+    if (interaction.commandName === 'level')
+    {
+
+      getRank(interaction)
+
+    }
 
   }
 
@@ -136,7 +144,7 @@ client.on("messageCreate", (message) => {
 
 
 
-
+// ------------------------------- USER LEVEL ON MESSAGE ------------------------------- //
  function getRandomXp(min, max) {
   min = Math.ceil(min);
   max = Math.floor(max);
@@ -197,6 +205,77 @@ async function xpGiver(message) {
   
 }
 
+// ------------------------------- END USER LEVEL ON MESSAGE ------------------------------- //
+
+// ------------------------------- RANKCARD FUNCTION ------------------------------- //
+async function getRank(interaction){
+
+  if (!interaction.inGuild()){
+    interaction.reply('Must send in server');
+    return;
+
+  }
+
+  await interaction.deferReply();
+
+  const mentionedUserId = interaction.options.get('target-user')?.value; //targeted user value
+  const targetUserId = mentionedUserId || interaction.member.id; // either the target or the one who sent the message
+  const targetUserObj = await interaction.guild.members.fetch(targetUserId); // the target as an object fetched from the guild
+
+  // the level fetched from the database
+  const fetchedLevel = await Level.findOne({
+    userId: targetUserId,
+    guildId: interaction.guild.id,
+
+  });
+
+  // if the level wasnt found
+  if (!fetchedLevel) {
+    interaction.editReply(
+      mentionedUserId ? `${targetUserObj.user.tag} doesnt have any levels yet` : 'you dont have any levels yet'
+    )
+    return;
+  }
+
+  // --- RANKING SYSTEM --- //
+
+  let allLevels = await Level.find({ guildId: interaction.guild.id}).select('-_id userId level xp'); // find the all schemas with those tags i.e the level schemas (array)
+
+  // sorts the levels in the all levels aray checking if each 2 levels is greater than one another 
+  allLevels.sort((a, b) => {
+    if (a.level === b.level) {
+      return b.xp - a.xp;
+    } else {
+      return b.level - a.level // in the sorting alg if the first is greater than it will be positive so sort that way (since they are objects sorting by level specifically)
+    }
+  })
+
+
+  let currentRank = allLevels.findIndex((lvl) => lvl.userId === targetUserId) + 1; // this is what actually detirmines the rank number finds the user that was referenceds index and adds 1 since its zeroed indexed 
+
+  // --- END RANKING SYSTEM --- //
+
+  const rank = new canvacord.Rank()
+    .setAvatar(targetUserObj.user.displayAvatarURL({size: 256}))
+    .setRank(currentRank)
+    .setLevel(fetchedLevel.level)
+    .setCurrentXP(fetchedLevel.xp)
+    .setRequiredXP(calculateXp(fetchedLevel.level))
+    .setProgressBar('#FFC300', 'COLOR')
+    .setUsername(targetUserObj.user.username)
+    .setDiscriminator(targetUserObj.user.discriminator);
+  
+  const data = await rank.build();
+
+  const attachment = new AttachmentBuilder(data);
+
+  interaction.editReply({ files: [attachment]});
+
+
+
+}
+
+// ------------------------------- END RANKCARD FUNCTION ------------------------------- //
 
 
 // ------------------------------- MONGO DB CONNECTION ------------------------------- //
