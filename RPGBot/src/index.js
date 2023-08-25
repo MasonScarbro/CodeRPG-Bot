@@ -6,7 +6,12 @@ const Level = require('./Level');
 const calculateXp = require('./calculateXp');
 const cooldowns = new Set();
 const canvacord  = require('canvacord')
-
+const fontArray = [
+  {
+  path: "C:\Users\Admin\Desktop\DiscordBot\CodeRPG-Bot\RPGBot\font\StorybookEnding-nRLX0.ttf",
+  name: 'Storybook Ending',
+  } 
+];
 
 const client = new Client({
   intents: [
@@ -82,7 +87,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.commandName === 'level')
     {
 
-      getRank(interaction)
+      getRank(interaction);
 
     }
 
@@ -100,18 +105,15 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       const hasRole = interaction.member.roles.cache.has(role.id);
-      
+      console.log(hasRole);
       await interaction.deferReply({ ephemeral: true });
   
-      if (hasRole) {
-        await interaction.member.roles.remove(role);
-        await interaction.editReply(`the ${role} class has been removed`)
-        return;
-      } else {
-        await interaction.member.roles.add(role)
-        await interaction.editReply(`the ${role} class has been added`)
+      await interaction.member.roles.set([]);
+      await interaction.editReply(`Remember you can only select one role all previous ones have been removed if any!`);
+      await interaction.member.roles.add(role);
+      await interaction.editReply(`the ${role} class has been added`);
 
-      }
+      
   
 
     }
@@ -263,6 +265,7 @@ async function getRank(interaction){
     .setRequiredXP(calculateXp(fetchedLevel.level))
     .setProgressBar('#FFC300', 'COLOR')
     .setUsername(targetUserObj.user.username)
+    .registerFonts(fontArray)
     .setDiscriminator(targetUserObj.user.discriminator);
   
   const data = await rank.build();
