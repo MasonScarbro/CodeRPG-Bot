@@ -17,6 +17,21 @@ const commands = [
             }
         ]
     },
+    {
+        name: 'resetrole',
+        description: 'Resets your selected role to none',
+    },
+    {
+        name: 'duel',
+        description: 'duel this user!',
+        options: [
+            {
+                name: 'target-user',
+                description: 'the user card you want to see',
+                type: ApplicationCommandOptionType.Mentionable,
+            }
+        ]
+    },
     
 ];
 

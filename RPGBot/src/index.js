@@ -3,15 +3,12 @@ const { Client, IntentsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle, M
 const mongoose = require('mongoose');
 const {Schema, model } = require('mongoose');
 const Level = require('./Level');
+const { resetRole, getRank } = require('./RoleUtils');
+const UserRole = require("./UserRole");
 const calculateXp = require('./calculateXp');
 const cooldowns = new Set();
 const canvacord  = require('canvacord')
-const fontArray = [
-  {
-  path: "C:\Users\Admin\Desktop\DiscordBot\CodeRPG-Bot\RPGBot\font\StorybookEnding-nRLX0.ttf",
-  name: 'Storybook Ending',
-  } 
-];
+
 
 const client = new Client({
   intents: [
@@ -74,49 +71,88 @@ try {
 
 
 
-
 // ------------------------------- CLIENT INTERACTION ------------------------------- //
+
 client.on('interactionCreate', async (interaction) => {
   if (interaction.isChatInputCommand())
   {
-    if (interaction.commandName === 'hey')
-    {
-      interaction.reply('This Functions');
-
-    }
-    if (interaction.commandName === 'level')
-    {
-
-      getRank(interaction);
-
-    }
+    console.log(`Received command: ${interaction.commandName}`);
+      if (interaction.commandName === 'hey')
+      {
+        interaction.reply('Hello');
+  
+      }
+      if (interaction.commandName === 'level')
+      {
+  
+        getRank(interaction);
+  
+      }
+      if (interaction.commandName === 'resetrole')
+      {
+    
+        resetRole(interaction);
+    
+      }
+    
 
   }
-
-  if (interaction.isButton()) // Role Select 
+  try {
+    if (interaction.isButton()) // Role Select 
     {
+
+      if (cooldowns.has(interaction.user.id)) {
+        await interaction.reply({ content: 'Please wait before interacting again.', ephemeral: true });
+        return;  // Exit the interaction if the user is on cooldown
+      }
+      cooldowns.add(interaction.user.id);
       const role = interaction.guild.roles.cache.get(interaction.customId);
 
       if (!role) {
-        interaction.editReply({
-          content: 'Not found'
-        })
+        await interaction.reply({ content: 'Role not found', ephemeral: true });
         return;
       }
 
-      const hasRole = interaction.member.roles.cache.has(role.id);
-      console.log(hasRole);
-      await interaction.deferReply({ ephemeral: true });
-  
-      await interaction.member.roles.set([]);
-      await interaction.editReply(`Remember you can only select one role all previous ones have been removed if any!`);
-      await interaction.member.roles.add(role);
-      await interaction.editReply(`the ${role} class has been added`);
+      const userRole =  await UserRole.findOne({ userId: interaction.member.id });
 
+      if (userRole) {
+        await interaction.reply({
+          content: `You already have a role. To reset your role, use the /resetrole command.`,
+          ephemeral: true
+        });
+        return;
+      }
+      //console.log(hasRole);
+
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply();
+      }
       
-  
+      try {
+        await interaction.member.roles.add(role);
+        await new UserRole({
+          userId: interaction.member.id,
+          roleId: role.id
+        }).save();
+        await interaction.followUp({ content: `You have selected the ${role.name} class.`, ephemeral: true });
+      }
+      catch (e) {
+        console.error('Error during role assignment:', e);
+        await interaction.followUp({ content: 'An error occurred while assigning your role. Please try again later.', ephemeral: true });
 
+      }
+      setTimeout(() => {
+        cooldowns.delete(interaction.user.id);
+      }, 20000);
+      
     }
+  } catch (error) {
+    console.error('Error handling interaction:', error);
+    if (interaction.isButton()) {
+        await interaction.reply({ content: 'An error occurred with your interaction.', ephemeral: true });
+    }
+}
+  
     
 
 });
@@ -129,9 +165,14 @@ client.on('ready', async () => {
   console.log(`${client.user.tag} is online`);
 
   const channel = await client.channels.cache.get('1139015166437113916') // channel for role select
-if (channel) {
-  setupRoleMessage(channel); // role select button make function
-}
+  if (channel) {
+    const existingRoleSelection = await UserRole.findOne({ guildId: channel.guild.id });
+    
+    // Check if the user already selected a role
+    if (!existingRoleSelection) {
+      setupRoleMessage(channel); // Only setup role message if no role is selected
+    }
+  }
 });
 
 // END CLIENT READY//
@@ -147,7 +188,7 @@ client.on("messageCreate", (message) => {
 
 
 // ------------------------------- USER LEVEL ON MESSAGE ------------------------------- //
- function getRandomXp(min, max) {
+function getRandomXp(min, max) {
   min = Math.ceil(min);
   max = Math.floor(max);
   return Math.floor(Math.random() * (max - min + 1) + min);
@@ -209,76 +250,7 @@ async function xpGiver(message) {
 
 // ------------------------------- END USER LEVEL ON MESSAGE ------------------------------- //
 
-// ------------------------------- RANKCARD FUNCTION ------------------------------- //
-async function getRank(interaction){
 
-  if (!interaction.inGuild()){
-    interaction.reply('Must send in server');
-    return;
-
-  }
-
-  await interaction.deferReply();
-
-  const mentionedUserId = interaction.options.get('target-user')?.value; //targeted user value
-  const targetUserId = mentionedUserId || interaction.member.id; // either the target or the one who sent the message
-  const targetUserObj = await interaction.guild.members.fetch(targetUserId); // the target as an object fetched from the guild
-
-  // the level fetched from the database
-  const fetchedLevel = await Level.findOne({
-    userId: targetUserId,
-    guildId: interaction.guild.id,
-
-  });
-
-  // if the level wasnt found
-  if (!fetchedLevel) {
-    interaction.editReply(
-      mentionedUserId ? `${targetUserObj.user.tag} doesnt have any levels yet` : 'you dont have any levels yet'
-    )
-    return;
-  }
-
-  // --- RANKING SYSTEM --- //
-
-  let allLevels = await Level.find({ guildId: interaction.guild.id}).select('-_id userId level xp'); // find the all schemas with those tags i.e the level schemas (array)
-
-  // sorts the levels in the all levels aray checking if each 2 levels is greater than one another 
-  allLevels.sort((a, b) => {
-    if (a.level === b.level) {
-      return b.xp - a.xp;
-    } else {
-      return b.level - a.level // in the sorting alg if the first is greater than it will be positive so sort that way (since they are objects sorting by level specifically)
-    }
-  })
-
-
-  let currentRank = allLevels.findIndex((lvl) => lvl.userId === targetUserId) + 1; // this is what actually detirmines the rank number finds the user that was referenceds index and adds 1 since its zeroed indexed 
-
-  // --- END RANKING SYSTEM --- //
-
-  const rank = new canvacord.Rank()
-    .setAvatar(targetUserObj.user.displayAvatarURL({size: 256}))
-    .setRank(currentRank)
-    .setLevel(fetchedLevel.level)
-    .setCurrentXP(fetchedLevel.xp)
-    .setRequiredXP(calculateXp(fetchedLevel.level))
-    .setProgressBar('#FFC300', 'COLOR')
-    .setUsername(targetUserObj.user.username)
-    .registerFonts(fontArray)
-    .setDiscriminator(targetUserObj.user.discriminator);
-  
-  const data = await rank.build();
-
-  const attachment = new AttachmentBuilder(data);
-
-  interaction.editReply({ files: [attachment]});
-
-
-
-}
-
-// ------------------------------- END RANKCARD FUNCTION ------------------------------- //
 
 
 // ------------------------------- MONGO DB CONNECTION ------------------------------- //
